@@ -2,9 +2,12 @@ var express = require('express');
 var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
-
+var session = require('express-session');
+var uuid = require('node-uuid');
+var bcrypt = require('bcrypt-nodejs');
 
 var db = require('./app/config');
+var checkUser = require('./app/checkUser');
 var Users = require('./app/collections/users');
 var User = require('./app/models/user');
 var Links = require('./app/collections/links');
@@ -16,31 +19,51 @@ var app = express();
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
 app.use(partials());
+
+app.use(session({
+  genid: function(req) {
+    return uuid.v4(); // use UUIDs for session IDs
+  },
+  secret: 'keyboard cat',
+  resave: false,
+  saveUninitialized: false
+}));
+
 // Parse JSON (uniform resource locators)
 app.use(bodyParser.json());
 // Parse forms (signup/login)
 app.use(bodyParser.urlencoded({ extended: true }));
+// app.use(checkSession);
 app.use(express.static(__dirname + '/public'));
 
-
-app.get('/', 
+app.get('/', checkUser,
 function(req, res) {
   res.render('index');
 });
 
-app.get('/create', 
-function(req, res) {
-  res.render('index');
+app.get('/login',
+  function(req, res) {
+    res.render('login');
 });
 
-app.get('/links', 
+app.get('/signup', 
+function(req, res) {
+    res.render('signup');
+});
+
+app.get('/create', checkUser,
+function(req, res) {
+  res.redirect('/index');
+});
+
+app.get('/links', checkUser,
 function(req, res) {
   Links.reset().fetch().then(function(links) {
     res.send(200, links.models);
   });
 });
 
-app.post('/links', 
+app.post('/links', checkUser,
 function(req, res) {
   var uri = req.body.url;
 
@@ -78,6 +101,73 @@ function(req, res) {
 // Write your authentication routes here
 /************************************************************/
 
+app.post('/login', 
+function(req, res) {
+  //get the user name and password from the req
+  var username = req.body.username;
+  var password = req.body.password;
+  //query database for the username info
+  Users.query({where: {username: username}}).fetchOne().then(function(user) {
+
+    //compare the hash with the hash in the database
+    bcrypt.compare(password, user.get('password'), function(error, match) {
+      if (error) { throw error; } 
+      console.log(match);
+      if (match) {
+        console.log("Logged in successfully as: ", username);
+        req.session.regenerate(function(err) {
+          // will have a new session here
+          if (err) { throw err; }
+        });
+        res.redirect('/');
+      } else {
+        console.log('Your password did not match. Try again.');
+        res.redirect('/login');
+      }
+    });
+  }).catch(Users.NotFoundError, function() {
+    console.log('user does not exist in the database');
+    res.redirect('/login');
+  }).catch(function(err) {
+    console.log("other error");
+    console.log(err);
+  });
+});
+
+app.post('/signup', 
+function(req, res) {
+  Users.reset();
+  //get the user name and password from the req
+  var username = req.body.username;
+  var password = req.body.password;
+  
+  //check if the username is in the database
+  Users.query({where: {username: username}}).fetchOne().then(function(user) {
+    if (user) {
+        console.log('The username is already taken');
+        // should really do something on the client side to notify the user
+        res.redirect('/signup');
+    } else {
+      //hash the password
+      bcrypt.hash(password, null, null, function(err, hash) {
+        
+        //add to the users database with the user info
+        console.log("creating new user: ", username);  
+        new User({
+          username: username,
+          password: hash
+        }).save().then(function(newUser) {
+          Users.add(newUser);
+          //set the session
+          sess = req.session.regenerate(function(err) {
+            if (err) { throw err; }
+          });
+          res.redirect('/');
+        });
+      });
+    }
+  });
+});
 
 
 /************************************************************/
