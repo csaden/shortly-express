@@ -115,7 +115,7 @@ function(req, res) {
       return res.redirect('/login');
     }
     // if user exists, compare the hash with the hash in the database
-    bcrypt.compare(password, user.get('password'), function(error, match) {
+    user.comparePasswords(password, function(error, match) {
       if (match) {
         console.log("Logged in successfully as: ", username);
         util.createSession(req, res, user);
@@ -139,22 +139,17 @@ function(req, res) {
   //check if the username is in the database
   new User({username: username}).fetch().then(function(user) {
     if (user) {
-        // should really do something on the client side to notify the user
-        console.log('The account with username ', username, ' already exists.');
-        res.redirect('/signup');
+      console.log('The account with username ', username, ' already exists.');
+      res.redirect('/signup');
     } else {
-      //hash the password
-      bcrypt.hash(password, null, null, function(err, hash) {
-
-        //add to the users database with the user info
-        console.log("creating new user: ", username);
-        Users.create({
-          username: username,
-          password: hash
-        }).then(function(newUser) {
-          //set the session
-          util.createSession(req, res, newUser);
-        });
+      //add to the users database with the user info
+      console.log("creating new user: ", username);
+      Users.create({
+        username: username,
+        password: password // password is update upon instantiation of model -- see user model
+      }).then(function(newUser) {
+        //set the session
+        util.createSession(req, res, newUser);
       });
     }
   });
