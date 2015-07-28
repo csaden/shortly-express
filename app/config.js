@@ -48,10 +48,22 @@ db.knex.schema.hasTable('clicks').then(function(exists) {
 db.knex.schema.hasTable('users').then(function(exists) {
   if (!exists) {
     db.knex.schema.createTable('users', function (user) {
-      user.increments('id').primary();
+      user.increments('user_id').primary();
       user.string('username', 255);
       user.string('password', 255);
       user.timestamps();
+    }).then(function (table) {
+      console.log('Created Table', table);
+    });
+  }
+});
+
+db.knex.schema.hasTable('sessions').then(function(exists) {
+  if (!exists) {
+    db.knex.schema.createTable('sessions', function (session) {
+      session.increments('session_id').primary();
+      session.integer('uuid', 255);
+      session.timestamps();
     }).then(function (table) {
       console.log('Created Table', table);
     });
